@@ -23,15 +23,15 @@ class WeightNorm(tf.keras.layers.Wrapper):
 
     def build(self, input_shape):
 
-        #self.layer.build(input_shape)
+        self.layer.build(input_shape)
         #print("[DEBUG] after build: ", K.eval(self.layer.kernel))
         self.v = self.layer.kernel
         self.layer.kernel = None
         self.g = self.add_weight(
                     name = 'g', shape = [],
                     initializer = 'ones', dtype = self.v.dtype, trainable = True)
-
-        super(WeightNorm, self).build()
+        self._init_norm()
+        #super(WeightNorm, self).build()
 
     def _init_norm(self):
         #print("[DEBUG] self.layer.kernel: ", K.eval(self.v), " kernel shape: ", self.v.shape)
@@ -41,15 +41,15 @@ class WeightNorm(tf.keras.layers.Wrapper):
 
     def _compute_weights(self):
 
-        self.layer.kernel = tf.nn.l2_normalize(self.v, axis = self.axis) * self.g
+        self.layer.kernel = tf.nn.l2_normalize(self.v, axis = None) * self.g
         #print("[DEBUG] self.g: ", self.g)
         #print("[DEBUG] l2_norm: ", tf.math.l2_normalize(self.v, axis = self.axis))
 
 
     @tf.function
     def call(self, inputs):
-        self._init_norm()
+        #self._init_norm()
         self._compute_weights()
         output = self.layer(inputs)
-
+        #print("[DEBUG] self.layer.weight: ", self.layer.weights)
         return output

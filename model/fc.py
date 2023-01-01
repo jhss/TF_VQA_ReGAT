@@ -5,8 +5,9 @@ https://github.com/linjieli222/VQA_ReGAT
 Licensed under the MIT license.
 """
 
+import numpy as np
 import tensorflow as tf
-import tensorflow_probability as tfp
+from model.weight_norm import WeightNorm
 
 class FullyConnected(tf.keras.layers.Layer):
   def __init__(self, dims, activation = 'relu', dropout = 0, bias = True):
@@ -25,8 +26,15 @@ class FullyConnected(tf.keras.layers.Layer):
              self.layers.append(tf.keras.layers.Dropout(dropout))
 
           #print("[DEBUG] fc in_dim, out_dim: ", in_dim, out_dim)
-          self.layers.append(tf.keras.layers.Dense(out_dim, input_shape=(in_dim, ),
-                                                   use_bias = bias, activation = activation))
+          self.layers.append(
+            WeightNorm(tf.keras.layers.Dense(out_dim, input_shape=(None, in_dim),
+                                             use_bias = bias, activation = None)))
+
+          if activation == 'relu':
+              self.layers.append(tf.keras.layers.Activation('relu'))
+          elif activation == 'tanh':
+              self.layers.append(tf.keras.layers.Activation('tanh'))
+
 
       #print("[DEBUG] fc here")
       if 0 < dropout:
@@ -34,17 +42,28 @@ class FullyConnected(tf.keras.layers.Layer):
 
 
       #print("[DEBUG] fc dims[-2], dims[-1]: ", dims[-2], dims[-1])
-      self.layers.append(tf.keras.layers.Dense(dims[-1], input_shape=(dims[-2], ),
-                                               use_bias = bias, activation = activation))
+      self.layers.append(
+        WeightNorm(tf.keras.layers.Dense(dims[-1], input_shape=(None, dims[-2]),
+                                         use_bias = bias, activation = None)))
 
-      #print("[DEBUG] self.layers. weight_norm: ", self.layers[-1].get_weights())
+      if activation == 'relu':
+          self.layers.append(tf.keras.layers.Activation('relu'))
+      elif activation == 'tanh':
+          self.layers.append(tf.keras.layers.Activation('tanh'))
 
   def call(self, x):
 
+      #if compare:
+      #print("[DEBUG] self.fc layers: ", self.layers)
       #print("FC input.shape: ", x.shape)
       for i in range(len(self.layers)):
           #print("[DEBUG] layers: ", self.layers[i])
           x = self.layers[i](x)
+          #tf_output = x.numpy()
+          #if compare:
+              #for p in self.layers.trainable_variables:
+              #       print(p.name, p)
+              #print(f"[DEBUG] {i}th output compare: ", np.allclose(tf_output, self.pt_output[i], rtol = 1e-5, atol = 1e-5, equal_nan = False))
           #print("[DEBUG] FC output.shape: ", x.shape,)
 
       return x
