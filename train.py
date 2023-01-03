@@ -34,123 +34,6 @@ def compute_score_with_logits(logits, labels):
     scores = tf.reduce_sum(one_hots * labels)
     return scores
 
-class LearningRateSchedule(tf.keras.callbacks.Callback):
-    def __init__(self, args):
-        self.gradual_warmup_steps = [0.5 * lr_default, 1.0 * lr_default,
-                                1.5 * lr_default, 2.0 * lr_default]
-        self.lr_decay_epochs = range(args.lr_decay_start, num_epochs, args.lr_decay_step)
-        self.last_eval_score = None
-        self.args = args
-
-    def on_epoch_begin(self, epoch, logs={}):
-        if epoch < len(self.gradual_warmup_steps):
-            old_lr = self.model.optimizer.lr.read_value()
-            new_lr = self.gradual_warmup_steps[epoch]
-            logger.write(f"\nEpoch: {epoch}. Reducing Learning Rate from {old_lr} to {new_lr}")
-            self.model.optimizer.lr.assign(new_lr)
-
-        elif (epoch in self.lr_decay_epochs or
-              eval_score < last_eval_score and self.args.lr_decay_based_on_val):
-
-            # [CHECK} eval_score 불러오는 법을 알아내야함 -> fit에 validation 넣고 실행해서
-            # val score 어떻게 얻는지 확인해보기
-            old_lr = self.model.optimizer.lr.read_value()
-            new_lr *= self.args.lr_decay_rate
-            self.model.optimizer.lr.assign(new_lr)
-            logger.write('decreased lr: %.4f' % self.model.optimizer.lr.read_value())
-        else:
-            logger.write('lr: %.4f' % self.model.optimizer.lr.read_value())
-
-def train_debug(model, train_loader, eval_loader, args):
-    N = train_loader.data_len # [Check] 수정
-    lr_default      = args.base_lr
-    num_epohcs      = args.epochs
-
-    print("[DEBUG] weight decay off")
-    optimizer = Adamax(learning_rate = lr_default, beta_1 = 0.9, beta_2 = 0.999,
-                       epsilon = 1e-8)
-
-    logger = utils.Logger(os.path.join(args.output, 'log.txt'))
-    best_eval_score = 0
-
-    #utils.print_model(model, logger)
-    logger.write('optim: adamax lr=%.4f, decay_step=%d, decay_rate=%.2f,'
-                 % (lr_default, args.lr_decay_step,
-                    args.lr_decay_rate) + 'grad_clip=%.2f' % args.grad_clip)
-    #logger.write('LR decay epochs: '+','.join(
-    #                                    [str(i) for i in lr_decay_epochs]))
-    last_eval_score, eval_score = 0, 0
-
-    relation_type = 'implicit' # train_loader.dataset.relation_type
-
-    #pt_visual  = tf.convert_to_tensor(np.load("../VQA_ReGAT/data/visual.npy"))
-    #pt_norm_bb = tf.convert_to_tensor(np.load("../VQA_ReGAT/data/norm_bb.npy"))
-    #pt_q       = tf.convert_to_tensor(np.load("../VQA_ReGAT/data/q.npy"))
-    #pt_target  = tf.convert_to_tensor(np.load("../VQA_ReGAT/data/target.npy"))
-    #pt_bb      = tf.convert_to_tensor(np.load("../VQA_ReGAT/data/bb.npy"))
-
-    for epoch in range(0, num_epohcs):
-        pbar = tqdm(total=train_loader.data_len)
-        total_norm, count_norm = 0, 0
-        total_loss, train_score = 0, 0
-        count, average_loss, att_entropy = 0, 0, 0
-        t = time.time()
-        print("--"*50)
-        print(f"[DEBUG] epoch {epoch}, number of steps: {train_loader.data_len}")
-        print("--"*50)
-        for i, (visual_feature, norm_bb, question, target, _, _, bb,
-                spa_adj_matrix, sem_adj_matrix) in enumerate(train_loader.generator()):
-
-            #print("[DEBUG] visual_feature: ", visual_feature)
-            #print("[DEBUG] visual.shape: ", visual_feature.shape)
-            #print("[DEBUG] pt_visual.shape: ", pt_visual.shape)
-
-            #visual_isequal  = tf.experimental.numpy.isclose(visual_feature, pt_visual, atol = 1e-5, equal_nan = False)
-            #norm_bb_isequal = tf.experimental.numpy.isclose(norm_bb, pt_norm_bb, atol = 1e-5, equal_nan = False)
-            #q_isequal       = tf.experimental.numpy.isclose(question, pt_q, atol = 1e-5, equal_nan = False)
-            #target_isequal  = tf.experimental.numpy.isclose(target, pt_target, atol = 1e-5, equal_nan = False)
-            #bb_isequal      = tf.experimental.numpy.isclose(bb, pt_bb, atol = 1e-5, equal_nan = False)
-
-            #print("[DEBUG] visual isequal: ", tf.math.reduce_all(visual_isequal).numpy())
-            #print("[DEBUG] norm isequal: ", tf.math.reduce_all(norm_bb_isequal).numpy())
-            #print("[DEBUG] q isequal: ", tf.math.reduce_all(q_isequal).numpy())
-            #print("[DEBUG] target isequal: ", tf.math.reduce_all(target_isequal).numpy())
-            #print("[DEBUG] bb isequal: ", tf.math.reduce_all(bb_isequal).numpy())
-
-            #sys.exit()
-            #print("[DEBUG] dtype: ", type(visual_feature), type(norm_bb), type(question), type(target), type(bb), type(spa_adj_matrix), type(sem_adj_matrix))
-            #print("[DEBUG] question.shape: ", question.shape)
-            #print("[DEBUG] loop visual.shape: ", visual_feature.shape) # [9, 30, 2048]
-            batch_size, num_objects = visual_feature.shape[0], visual_feature.shape[1]
-
-            pos_emb, sem_adj_mat, spa_adj_mat = prepare_graph_variables(
-                relation_type, bb, sem_adj_matrix, spa_adj_matrix, num_objects,
-                args.nongt_dim, args.imp_pos_emb_dim, args.spa_label_num,
-                args.sem_label_num)
-
-            with tf.GradientTape() as g:
-                pred, att = model(visual_feature,
-                                  norm_bb, question, pos_emb,
-                                  sem_adj_mat,
-                                  spa_adj_mat, target)
-
-                loss = instance_bce_with_logits(target, pred)
-
-            gradients = g.gradient(loss, model.trainable_variables)
-            gradients = [(tf.clip_by_norm(grad, args.grad_clip)) for grad in gradients]
-            optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-            loss_avg = tf.reduce_mean(loss)
-            print("[DEBUG] loss: ", loss_avg)
-            print("[DEBUG] score: ", compute_score_with_logits(pred, target))
-            pbar.update(1)
-            model.summary()
-            sys.exit()
-            if i == 10:
-                print("[DEBUG] program end")
-                sys.exit()
-
-        evaluate(model, train_loader, args)
-
 def train(model, train_loader, eval_loader, args):
     N = train_loader.data_len # [Check] 수정
     lr_default      = args.base_lr
@@ -163,6 +46,9 @@ def train(model, train_loader, eval_loader, args):
     logger = utils.Logger(os.path.join(args.output, 'log.txt'))
     best_eval_score = 0
 
+    model.compile(loss = instance_bce_with_logits, optimizer = optimizer)
+    gradual_warmup_steps = [lr_default, lr_default, 1.2 * lr_default, 1.3 * lr_default, 1.4 * lr_default]
+    lr_decay_epochs = range(5, num_epochs, args.lr_decay_step)
     #utils.print_model(model, logger)
     logger.write('optim: adamax lr=%.4f, decay_step=%d, decay_rate=%.2f,'
                  % (lr_default, args.lr_decay_step,
@@ -181,6 +67,17 @@ def train(model, train_loader, eval_loader, args):
 
         losses = utils.AverageMeter()
         start = end = time.time()
+
+        if epoch < len(gradual_warmup_steps):
+            old_lr = model.optimizer.lr.read_value()
+            new_lr = gradual_warmup_steps[epoch]
+            model.optimizer.lr.assign(new_lr)
+            logger.write(f"\nEpoch: {epoch}. Reducing Learning Rate from {old_lr} to {new_lr}")
+        elif epoch in lr_decay_epochs:
+            old_lr = model.optimizer.lr.read_value()
+            new_lr = old_lr * 0.75
+            model.optimizer.lr.assign(new_lr)
+            logger.write(f"\nEpoch: {epoch}. Reducing Learning Rate from {old_lr} to {new_lr}")
 
         logger.write("--"*50)
         logger.write(f"[DEBUG] epoch {epoch}, number of steps: {train_loader.data_len}")
