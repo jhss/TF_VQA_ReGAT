@@ -12,12 +12,12 @@ from model.fc import FullyConnected
 class BUTD(tf.keras.layers.Layer):
     def __init__(self, v_dim, q_dim, hidden_dim, dropout = 0.2):
         super(BUTD, self).__init__()
-        self.v2attention    = FullyConnected([v_dim, hidden_dim])
-        self.q2attention    = FullyConnected([q_dim, hidden_dim])
+        self.v2attention    = FullyConnected([v_dim, hidden_dim], dropout)
+        self.q2attention    = FullyConnected([q_dim, hidden_dim], dropout)
         self.dropout        = tf.keras.layers.Dropout(dropout)
-        self.linear         = FullyConnected([hidden_dim, 1])
-        self.visual_embed   = FullyConnected([v_dim, hidden_dim])
-        self.question_embed = FullyConnected([q_dim, hidden_dim])
+        self.linear         = FullyConnected([hidden_dim, 1], dropout)
+        self.visual_embed   = FullyConnected([v_dim, hidden_dim], dropout)
+        self.question_embed = FullyConnected([q_dim, hidden_dim], dropout)
 
     def call(self, visual, question):
         """
@@ -43,13 +43,9 @@ class BUTD(tf.keras.layers.Layer):
     def attention_weights(self, visual, question):
 
         _, k, _ = visual.shape
-        # (9, 14, 1024)
-        #print("[DEBUG] v2attention before question.shape: ", question.shape)
-        #print("[DEBUG] visual.shape: ", visual.shape)
+
         visual   = self.v2attention(visual)
         question = self.q2attention(question)
-        #print("question.shape: ", question[:, tf.newaxis, :].shape)
-        #print("[DEBUG] k: ", k)
         question = tf.tile(question[:, tf.newaxis, :], (1, k, 1))
 
         joint = self.dropout(visual * question)
