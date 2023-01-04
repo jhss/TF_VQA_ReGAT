@@ -126,6 +126,7 @@ def train(model, train_loader, eval_loader, args):
 
         
         train_score /= num_total_data
+        train_score *= 100
 
         # Start evaluation
         eval_score = evaluate(model, eval_loader, epoch, args, logger)
@@ -149,7 +150,7 @@ def evaluate(model, eval_loader, epoch, args, logger):
     start = end = time.time()
 
     # Start evaluation
-    for i, (visual_feature, norm_bb, question, target, _, _, bb,
+    for i, (visual_feature, norm_bb, question, target, bb,
             spa_adj_matrix, sem_adj_matrix) in enumerate(eval_loader.generator()):
 
         batch_size, num_objects = visual_feature.shape[0], visual_feature.shape[1]
@@ -162,7 +163,7 @@ def evaluate(model, eval_loader, epoch, args, logger):
         pred, att = model(visual_feature,
                           norm_bb, question, pos_emb,
                           sem_adj_mat,
-                          spa_adj_mat, target)
+                          spa_adj_mat)
 
         loss = instance_bce_with_logits(pred, target)
         loss_avg = tf.reduce_mean(loss) * tf.cast(tf.shape(target)[1], tf.float32)
@@ -176,4 +177,5 @@ def evaluate(model, eval_loader, epoch, args, logger):
             elapsed = utils.timeSince(start, float(i+1)/N)
             logger.write(f"Epoch [{epoch+1}][{i}/{N}] Elapsed {elapsed} Loss: {losses.val:.5f}({losses.avg:.5f})")
     score = score / num_total_data
+    score *= 100
     return score

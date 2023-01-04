@@ -5,10 +5,9 @@ import tensorflow as tf
 from tensorflow.python.client import device_lib
 
 from config.parser import parse_with_config
-from utils import gen_data_generator
-from dataset import Dictionary, VQAFeatureDataset, VQAFeatureDataset2, tfidf_from_questions
+from dataset import Dictionary, VQAFeatureDataset, tfidf_from_questions
 from model.rel_graph_net import build_relation_graph_attention_net
-from train import train, train_debug
+from train import train
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -20,17 +19,9 @@ def parse_args():
     parser.add_argument('--lr_decay_start', type=int, default=15)
     parser.add_argument('--lr_decay_rate', type=float, default=0.25)
     parser.add_argument('--lr_decay_step', type=int, default=2)
-    parser.add_argument('--lr_decay_based_on_val', action='store_true',
-                        help='Learning rate decay when val score descreases')
-    parser.add_argument('--grad_accu_steps', type=int, default=1)
     parser.add_argument('--grad_clip', type=float, default=0.25)
-    parser.add_argument('--weight_decay', type=float, default=0)
     parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--output', type=str, default='saved_models/')
-    parser.add_argument('--save_optim', action='store_true',
-                        help='save optimizer')
-    parser.add_argument('--log_interval', type=int, default=-1,
-                        help='Print log for certain steps')
     parser.add_argument('--seed', type=int, default=42, help='random seed')
 
     '''
@@ -43,7 +34,7 @@ def parse_args():
     '''
     parser.add_argument('--dataset', type=str, default='vqa',
                         choices=["vqa", "vqa_cp"])
-    parser.add_argument('--data_folder', type=str, default='../VQA_ReGAT/data')
+    parser.add_argument('--data_folder', type=str, default='./data')
     parser.add_argument('--use_both', action='store_true',
                         help='use both train/val datasets to train?')
     parser.add_argument('--use_vg', action='store_true',
@@ -62,11 +53,7 @@ def parse_args():
     parser.add_argument('--op', type=str, default='c',
                         help="op used in tfidf word embedding")
     parser.add_argument('--num_hid', type=int, default=1024)
-    '''
-    Fusion Hyperparamters
-    '''
-    parser.add_argument('--ban_gamma', type=int, default=1, help='glimpse')
-    parser.add_argument('--mutan_gamma', type=int, default=2, help='glimpse')
+
     '''
     Hyper-params for relations
     '''
@@ -98,10 +85,12 @@ def parse_args():
     parser.add_argument('--label_bias', action='store_true',
                         help='Enable bias term for relation labels \
                               in relation encoder')
-    parser.add_argument('--print_freq',  default = 500)
+    parser.add_argument('--dropout', type=float, default = 0.2)
     # can use config files
     parser.add_argument('--config', help='JSON config files')
 
+    parser.add_argument('--print_freq',  default = 500)
+    parser.add_argument('--mode', type=str, default = 'train')
     args = parse_with_config(parser)
     return args
 
@@ -126,41 +115,38 @@ if __name__ == "__main__":
                 pos_emb_dim=args.imp_pos_emb_dim, dataroot=args.data_folder,
                 batch_size = args.batch_size // 4)
 
-    train_dset = VQAFeatureDataset(
+    # run train
+
+    if args.mode == 'train':
+        train_dset = VQAFeatureDataset(
                 'train', dictionary, args.relation_type, adaptive=args.adaptive,
                 pos_emb_dim=args.imp_pos_emb_dim, dataroot=args.data_folder,
                 batch_size = args.batch_size)
     
-    # load model
-    model = build_relation_graph_attention_net(train_dset, args)
+        # create model
+        model = build_relation_graph_attention_net(train_dset, args)
 
-    tfidf = None
-    weights = None
+        tfidf = None
+        weights = None
 
-    # load pre-trained Glove weight
-    if args.tfidf:
-        tfidf, weights = tfidf_from_questions(['train', 'val', 'test2015'], dictionary)
+        # load pre-trained Glove weight
+        if args.tfidf:
+            tfidf, weights = tfidf_from_questions(['train', 'val', 'test2015'], dictionary)
 
-    model.w_emb.init_embedding(os.path.join(args.data_folder, 
-                                            'glove/glove6b_init_300d.npy'),
-                               tfidf, weights)
+        model.w_emb.init_embedding(os.path.join(args.data_folder, 
+                                                'glove/glove6b_init_300d.npy'),
+                                   tfidf, weights)
+     
+        train(model, train_dset, val_dset, args)
+
+        # save the model
+        model.save(os.path.join(args.output, 
+                                f'{args.relation_type}-{args.fusion}-pretrained_model'))
     
-    # run train
-    train(model, train_dset, val_dset, args)
+    # run evaluation
+    elif args.mode == 'eval':
+        logger = utils.Logger(os.path.join(args.output, 'eval_log.txt')
+        pretrained_model = tf.keras.models.load_model(args.checkpoint)
+        eval_score = evaluate(pretrained_model, val_dset, 0, args, logger) * 100
+        logger.write(f"Final eval score: {eval_score:.4f}")
 
-    '''
-    output_meta_folder = join(args.output, "regat_%s" % args.relation_type)
-    utils.create_dir(output_meta_folder)
-    args.output = output_meta_folder+"/%s_%s_%s_%d" % (
-                fusion_methods, args.relation_type,
-                args.dataset, args.seed)
-    if exists(args.output) and os.listdir(args.output):
-        raise ValueError("Output directory ({}) already exists and is not "
-                         "empty.".format(args.output))
-    utils.create_dir(args.output)
-    with open(join(args.output, 'hps.json'), 'w') as writer:
-        json.dump(vars(args), writer, indent=4)
-    logger = utils.Logger(join(args.output, 'log.txt'))
-
-    train(model, train_loader, eval_loader, args, device)
-    '''
