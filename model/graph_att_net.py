@@ -22,10 +22,11 @@ class GraphAttentionNetwork(tf.keras.layers.Layer):
         self.out_feat_dim = out_feat_dim
         self.dropout = tf.keras.layers.Dropout(dropout)
         self.self_weights = FullyConnected([in_feat_dim, out_feat_dim], None, dropout)
-        self.bias = FullyConnected([label_num, 1], None, 0, label_bias)
+        self.bias = FullyConnected([label_num, 1], None, 0.2, label_bias)
         self.nongt_dim = nongt_dim
         self.pos_emb_dim = pos_emb_dim
         self.neighbor_net = []
+
         for i in range(dir_num):
             g_att_layer = GraphSelfAttentionLayer(
                             pos_emb_dim = pos_emb_dim,
@@ -33,6 +34,8 @@ class GraphAttentionNetwork(tf.keras.layers.Layer):
                             hidden_dim = out_feat_dim,
                             nongt_dim=nongt_dim)
             self.neighbor_net.append(g_att_layer)
+
+
 
     def call(self, v_feat, adj_mat, pos_emb = None):
 
@@ -50,28 +53,23 @@ class GraphAttentionNetwork(tf.keras.layers.Layer):
         batch_size, num_rois, feat_dim = v_feat.shape
         nongt_dim = self.nongt_dim
 
-        #print("[DEBUG] adj mat dtype: ", adj_mat.dtype)
-        #adj_mat = adj_mat.float()
-        #print("[DEBUG] before adj_mat_list.shape: ", adj_mat.shape)
-        #print("[DEBUG] adj mat dtype: ", adj_mat.dtype)
         adj_mat_list = [adj_mat, tf.transpose(adj_mat, [0, 2, 1, 3])]
 
         self_feat = self.self_weights(v_feat)
+
 
         output = self_feat
         neighbor_emb = [0] * self.dir_num
 
         for d in range(self.dir_num):
             input_adj_mat = adj_mat_list[d][:, :, :nongt_dim, :]
+
+
             # (9, 30, 20, 1)
-            #print("[DEBUG] first input_adj_mat.shape: ", input_adj_mat.shape)
             condensed_adj_mat = tf.reduce_sum(input_adj_mat, axis = -1)
-            # (9, 30, 20)
-            #print("[DEBUG] condensed_adj_mat.shape: ", condensed_adj_mat.shape)
-            # (9, 30, 20, 1)
-            #print("[DEBUG] input_adj_mat.shape: ", input_adj_mat.shape)
             # [9, 30, 20, 1]
             v_biases_neighbors = tf.squeeze(self.bias(input_adj_mat), axis = -1)
+
 
             neighbor_emb[d] = self.neighbor_net[d](
                 self_feat, condensed_adj_mat, pos_emb, v_biases_neighbors
