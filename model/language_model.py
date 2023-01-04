@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-
+import numpy as np
 from model.fc import FullyConnected
 """
 Embedding class is modifed by Juhong from Sungwoo kyoo's blog.
@@ -61,37 +61,23 @@ class WordEmbedding(tf.keras.layers.Layer):
 
     def init_embedding(self, np_file, tf_idf = None, tf_idf_weights = None):
         np_weight = np.load(np_file)
-        weight_init = tf.squeeze(tf.convert_to_tensor(np_weight))
+        weight_init = tf.squeeze(tf.convert_to_tensor(np_weight, dtype = tf.float32))
         del np_weight
         assert weight_init.shape == (self.n_token, self.emb_dim)
 
         pads        = tf.zeros(shape = (1, self.emb_dim), dtype = tf.float32)
-        print("[DEUBG] weight_init.shape: ", weight_init.shape)
-        #new_weights = tf.expand_dims(tf.concat([weight_init, pads], axis = 0), axis = 0)
         new_weights = tf.concat([weight_init, pads], axis = 0)
-        #print("[DEBUG} new_weights.shape: ", new_weights.shape)
-        print("[DEBUG] get_weights.shape: ", self.emb.get_weights()[0].shape)
-        print("[DEBUG] get_weights length: ", len(self.emb.get_weights()))
-        print("[DEBUG] get_weights length: ", type(self.emb.get_weights()))
-        #print("[DEBUG] get_weights shape: ", self.emb.get_weights().shape)
-        print("[DE]")
         self.emb.build((None,))
         self.emb.set_weights([new_weights])
-        print("[DEBUG] CLEAR")
+
         if tf_idf is not None:
 
-            print("[DEBUG] Before concat: ", weight_init.shape)
-            tensor_tf_idf_weights = tf.convert_to_tensor(tf_idf_weights)
-            print("[DEBUG] tf_idf_weights: ", tf_idf_weights)
+            tensor_tf_idf_weights = tf.convert_to_tensor(tf_idf_weights, dtype = tf.float32)
             del tf_idf_weights
-            print("[DEBUG] tf_weights.shape: ", tensor_tf_idf_weights.shape)
             weight_init = tf.concat([weight_init,
                                      tensor_tf_idf_weights], axis = 0)
 
-            print("[DEBUG] sparse: ", tf_idf)
-            print("[DEBUG] After concat weight_init.shape: ", weight_init.shape)
             weight_init = tf.sparse.sparse_dense_matmul(tf_idf, weight_init)
-            #weight_init = tf.matmul(tf_idf, weight_init)
 
             if 'c' in self.op:
                 self.emb_.trainable = True
@@ -115,6 +101,7 @@ class QuestionEmbedding(tf.keras.layers.Layer):
         super(QuestionEmbedding, self).__init__()
         assert rnn_type == 'LSTM' or rnn_type == 'GRU'
 
+        dropout = 0.0
         self.gru          = tf.keras.layers.GRU(units = hidden_dim, dropout = dropout,
                                                 return_sequences = True,
                                                 return_state = True)
@@ -125,21 +112,22 @@ class QuestionEmbedding(tf.keras.layers.Layer):
         self.rnn_type     = rnn_type
         self.n_directions = 1 + int(bidirect)
 
-    #def init_hidden(self, batch):
     def call_last(self, question):
-
+        """
+        Return only last hidden states
+        """
         output, hidden = self.gru(question)
 
         return output[:, -1]
-    # [Note] Replace 'forward_all' in the PyTorch code with 'call', because 'forward' seems not to be used in the code.
+
     def call(self, input):
+        """
+        Return all hidden states
+         """
 
-        #print("[DEBUG] question emb input.shape: ", input.shape)
         batch  = input.shape[0]
-        #initial_hidden = self.init_hidden(batch)
-        output, hidden = self.gru(input) # [CHECK] Pytorch Code 실행할 때 initial_hidden_state 없애고 실행해도 결과값 같은지 (예쌍: 같다)
+        output, hidden = self.gru(input) 
 
-        #print("[DEBUG] output.shape: ", output.shape, " hidden.shape: ", hidden.shape)
         return output
 
 
@@ -153,27 +141,31 @@ class QuestionSelfAttention(tf.keras.layers.Layer):
         self.act        = tf.keras.layers.Activation('tanh')
         self.linear2    = FullyConnected(dims = [hidden_dim, 1], activation = None)
 
+
     def call(self, question):
         """
-        question: [batch, 14, hidden_dim] -> what 14 means?
+        Inputs:
+            question: [batch, 14, hidden_dim]
+        
+        Returns:
+            self_att_question: [batch, hidden_dim]
         """
 
-        #print("[DEBUG] question.shape: ", question.shape)
-        # [DEBUG] question.shape:  (9, 1024)
         batch, seq_len = question.shape[0], question.shape[1]
-        reshaped_question = tf.reshape(question, shape = (-1, self.hidden_dim))
 
-        logits  = self.linear2(self.act(self.linear1(reshaped_question)))
-        #print("[DEBUG] logits.shape: ", logits.shape)
-        # [DEBUG] logits.shape:  (9, 1)
+        atten_1 = self.linear1(question)
 
-        logits  = tf.reshape(logits, (batch, seq_len))
+        atten_1 = self.act(atten_1)
+
+        logits  = self.linear2(atten_1)
+
+        logits  = tf.squeeze(logits)
+
         # [batch, 1, 14]
-        attention_weights = tf.reshape(tf.nn.softmax(logits, axis = 1), # 원본에서는 transpose사용했는데, 잘 모르겠음
+        attention_weights = tf.reshape(tf.nn.softmax(tf.transpose(logits), axis = 1),
                                        shape = (-1, 1, seq_len))
 
-        # attention_weight: [9, 1, 14], question: [9, 1024]
-        self_att_question = tf.reshape(tf.matmul(attention_weights, question),
+        self_att_question = tf.reshape(tf.matmul(attention_weights, question), 
                                        shape = (-1, self.hidden_dim))
 
         self_att_question = self.dropout(self_att_question)

@@ -1,13 +1,9 @@
 """
-Copyright (c) Microsoft Corporation.
-Licensed under the MIT license.
-
-Relation-aware Graph Attention Network for Visual Question Answering
-Linjie Li, Zhe Gan, Yu Cheng, Jingjing Liu
-https://arxiv.org/abs/1903.12314
-
-This code is written by Linjie Li.
+This code is modified by Juhong From Linjie Li's repository.
+https://github.com/linjieli222/VQA_ReGAT
+MIT License
 """
+
 import numpy as np
 import math
 
@@ -99,25 +95,10 @@ def tf_broadcast_adj_matrix(adj_matrix, label_num = 11):
 
 def tf_extract_position_embedding(position_mat, feat_dim, wave_length = 1000,):
 
-    '''feat_range = tf.range(0, feat_dim / 8)
-    dim_mat    = tf.math.pow(tf.ones((1,)) * wave_length,
-                             (8. / feat_dim) * feat_rnage)
-    dim_mat    = tf.reshape(dim_mat, shape = (1, 1, 1, -1))
-
-    position_mat = tf.expand_dims(100.0 * position_mat, axis = 4)
-
-    div_mat = tf.math.divide(position_mat, dim_mat)
-    sin_mat = tf.math.sin(div_mat)
-    cos_mat = tf.math.cos(div_mat)
-
-    embedding = tf.concat([sin_mat, cos_mat], axis = -1)
-
-    embedding = tf.reshape(embedding, shape = (embedding.shape[0], embedding.shape[1],
-                                               embedding.shape[2], feat_dim))'''
-
-    feat_range = np.arange(0, feat_dim / 8)
-    dim_mat    = np.power(np.ones((1,)) * wave_length,
+    feat_range = np.arange(0, feat_dim / 8, dtype = np.float32)
+    dim_mat    = np.power(np.ones((1,), dtype = np.float32) * wave_length,
                           (8. / feat_dim) * feat_range)
+
     dim_mat    = np.reshape(dim_mat, newshape = (1, 1, 1, -1))
 
     position_mat = np.expand_dims(100.0 * position_mat, axis = 4)
@@ -134,29 +115,17 @@ def tf_extract_position_embedding(position_mat, feat_dim, wave_length = 1000,):
     return embedding
 
 def tf_extract_position_matrix(bbox, nongt_dim = 36):
-    #print("[DEBUG] bbox: ", bbox)
-    #print("[DEBUG] bbox.shape: ", bbox.shape)
     split = np.split(bbox, 1, axis = -1)
-    #print("[DEBUG] len split: ", len(split))
-    #print("[DEBUG] split: ", split[0].shape)
-    print("----------------")
     xmin, ymin, xmax, ymax = bbox[:,:,0:1], bbox[:,:,1:2], bbox[:,:,2:3], bbox[:,:,3:4]
-    #print("xmin: ", xmin)
-    #print("ymin: ", ymin)
-    #print("xmax: ", xmax)
-    #print("ymax: ", ymax)
 
     # [batch_size,num_boxes, 1]
     bbox_width = xmax - xmin + 1.
     bbox_height = ymax - ymin + 1.
     center_x = 0.5 * (xmin + xmax)
     center_y = 0.5 * (ymin + ymax)
-    #print("[DEBUG] center_x.shape: ", center_x.shape)
-    #print("[DEBUG] center trnaspose.shape: ", np.transpose(center_x, [0, 2, 1]).shape)
+
     delta_x = center_x - np.transpose(center_x, [0, 2, 1])
     delta_x = np.divide(delta_x, bbox_width)
-    #print("[DEBUG] delta_x: ", delta_x)
-    #print("[DEBUG] delta_x.shape: ", delta_x.shape)
 
     delta_x = np.abs(delta_x)
     threshold = 1e-3
@@ -185,10 +154,7 @@ def prepare_graph_variables(relation_Type, bb, sem_adj_matrix, spa_adj_matrix,
                             num_objects, nongt_dim, pos_emb_dim, spa_label_num,
                             sem_label_num):
 
-    #print("[DEBUG] prepare bb.shape: ", bb.shape)
     pos_mat = tf_extract_position_matrix(bb, nongt_dim = nongt_dim)
-    #print("[DEBUG] pos_mat.shape: ", pos_mat.shape)
     pos_emb = tf_extract_position_embedding(pos_mat, feat_dim = pos_emb_dim)
-    #print("[DEBUG] pos_emb.shape: ", pos_emb.shape)
 
     return pos_emb, None, None

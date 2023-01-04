@@ -95,8 +95,6 @@ def create_glove_embedding_init(idx2word, glove_file):
     with open(glove_file, 'r', encoding='utf-8') as f:
         entries = f.readlines()
 
-    print("[DEBUG] glove_file: ", glove_file)
-    #print("[DEBUG] entries: ", entries)
     emb_dim = len(entries[0].split(' ')) - 1
     print('embedding dim is %d' % emb_dim)
     weights = np.zeros((len(idx2word), emb_dim), dtype=np.float32)
@@ -107,13 +105,10 @@ def create_glove_embedding_init(idx2word, glove_file):
         vals = list(map(float, vals[1:]))
         word2emb[word] = np.array(vals)
 
-    print("[DEBUG] idx2word: ", idx2word)
     for idx, word in enumerate(idx2word):
         if word not in word2emb:
             continue
-        #print("[DEBUG] HERE")
         weights[idx] = word2emb[word]
-    print("[DEBUG] glove_Weights: ", weights)
     return weights, word2emb
 
 def trim_collate(batch):

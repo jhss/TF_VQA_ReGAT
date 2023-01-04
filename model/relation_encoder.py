@@ -6,20 +6,18 @@ Licensed under the MIT license.
 """
 
 import tensorflow as tf
-
+import numpy as np
 from model.fc import FullyConnected
 from model.graph_att_net import GraphAttentionNetwork
 
 def concat_visual_question(q, v, mask = True):
 
-    #print("[DEBUG] before q.shape: ", q.shape)
     q = tf.reshape(q, (q.shape[0], 1, q.shape[1]))
     repeat_vals = (q.shape[0], v.shape[1], q.shape[2])
-    q = tf.broadcast_to(q, shape = repeat_vals) # [Check]
-    #print("[DEBUG] after expand shape: ", q.shape)
+    q = tf.broadcast_to(q, shape = repeat_vals) 
+
     if mask:
         v_sum = tf.reduce_sum(v, axis = -1)
-        #print("[DEBUG] v.dtype: ", v.dtype)
         mask_matrix = tf.not_equal(v_sum, tf.constant(0, dtype=tf.float32))
         mask_idx = tf.where(mask_matrix)
 
@@ -29,10 +27,8 @@ def concat_visual_question(q, v, mask = True):
             mask_matrix = tf.broadcast_to(mask_matrix, shape = (mask_matrix.shape[0],
                                                                 mask_matrix.shape[1],
                                                                 q.shape[2]))
-            #print("[DEBUG] q.shape: ", q.shape, " mask_matrix.shape: ", mask_matrix.shape)
-            masked_q = q * mask_matrix # [Check]
-            #print("[DEBUG] maksed_q: ", masked_q)
-            #q[mask_index[:, 0], mask_index[:, 1]] = 0
+
+            masked_q = q * mask_matrix
 
     # v: [9, 30]
     # maksed_q : [9,30,1024]
@@ -49,14 +45,12 @@ class ImplicitRelationEncoder(tf.keras.layers.Layer):
         self.v_dim = v_dim
         self.q_dim = q_dim
         self.out_dim = out_dim
-        print("[DEBUG] implicit out_dim: ", out_dim)
         self.residual_connection = residual_connection
         self.num_steps = num_steps
         print(f"In ImplicitRelationEncoder, num of graph propogate steps: {self.num_steps} residual_connection: {self.residual_connection}")
 
         if self.v_dim != self.out_dim:
-            print("[DEBUG] v2out v_dim, out_dim: ", v_dim, out_dim)
-            self.v2out = FullyConnected([v_dim, out_dim])
+            self.v2out = FullyConnected([v_dim, out_dim], dropout = 0.2)
         else:
             self.v2out = None
 
@@ -67,30 +61,29 @@ class ImplicitRelationEncoder(tf.keras.layers.Layer):
                                                        num_heads = num_heads,
                                                        pos_emb_dim = pos_emb_dim)
 
+
     def call(self, visual, pos_emb, question):
         '''
             visual:   [batch, num_rois, v_dim]
             question: [batch, q_dim]
-            pos_emb:  [batch, num_rois, nongt_dim, emb_dim] (정확히 뭔지 헷갈림)
+            pos_emb:  [batch, num_rois, nongt_dim, emb_dim]
 
             output:   [batch_size, num_rois, out_dim, 3]
         '''
 
-        #print("[DEBUG] implicit input visual.shape: ", visual.shape) # (9, 30, 2048)
         # fully connected due to implicit relation
         batch, num_rois = visual.shape[0], visual.shape[1]
         adj_mat =  tf.ones(shape = (batch, num_rois, num_rois, 1))
-        # (9, 30, 2048, 1)
-        #print("[DEBUG] visual adj_mat.shape: ", adj_mat.shape)
 
         if self.v2out:
             visual = self.v2out(visual)
-            #print("[DEBUG] after v2out: ", visual.shape)
-            # (9, 30, 1024)
+            # visual: [batch, num_rois, feat_dim]
 
         for i in range(self.num_steps):
             v_cat_q = concat_visual_question(question, visual, mask = True)
+
             imp_rel = self.implicit_relation(v_cat_q, adj_mat, pos_emb)
+
 
             if self.residual_connection:
                 visual += imp_rel
