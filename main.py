@@ -2,12 +2,14 @@ import argparse
 import os
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras import Input
 from tensorflow.python.client import device_lib
 
 from config.parser import parse_with_config
 from dataset import Dictionary, VQAFeatureDataset, tfidf_from_questions
 from model.rel_graph_net import build_relation_graph_attention_net
-from train import train
+from train import train, evaluate
+from utils import Logger
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -138,15 +140,19 @@ if __name__ == "__main__":
                                    tfidf, weights)
      
         train(model, train_dset, val_dset, args)
-
+        
         # save the model
-        model.save(os.path.join(args.output, 
-                                f'{args.relation_type}-{args.fusion}-pretrained_model'))
+        model.save_weights(f'{args.output}{args.relation_type}-{args.fusion}-pretrained_model.h5')
     
     # run evaluation
     elif args.mode == 'eval':
-        logger = utils.Logger(os.path.join(args.output, 'eval_log.txt')
-        pretrained_model = tf.keras.models.load_model(args.checkpoint)
-        eval_score = evaluate(pretrained_model, val_dset, 0, args, logger) * 100
+        # create model
+        model = build_relation_graph_attention_net(val_dset, args)
+
+        logger = Logger(os.path.join(args.output, 'eval_log.txt'))
+
+        # load the model
+        model.load_weights(args.checkpoint)
+        eval_score = evaluate(model, val_dset, 0, args, logger) * 100
         logger.write(f"Final eval score: {eval_score:.4f}")
 
