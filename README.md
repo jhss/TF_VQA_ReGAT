@@ -50,4 +50,6 @@ I trained the model with A100 40GB GPU (batch size: 256), and the code takes abo
 |Official PyTorch Code| 63.99|
 |Tensorflow 2.0 Code| 63.24 |
 
+You can check the train result in the [train.ipynb](https://github.com/jhss/TF_VQA_ReGAT/blob/main/train.ipynb).
+
 
