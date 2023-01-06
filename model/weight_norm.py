@@ -30,7 +30,7 @@ class WeightNorm(tf.keras.layers.Wrapper):
         
         self.layer.kernel = None
         self._init_norm()
-        super(WeightNorm, self).build()
+        #super(WeightNorm, self).build()
 
     def _init_norm(self):
         kernel_norm = tf.sqrt(tf.reduce_sum(tf.square(self.v)))

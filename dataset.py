@@ -292,10 +292,10 @@ class VQAFeatureDataset:
         features          = []
         normalized_bbs    = []
         questions         = []
-        targets           = []
         bbs               = []
         spatial_adj_mats  = []
         semantic_adj_mats = []
+        targets           = []
 
         for entry in entries:
             entry_img     = entry['image']
@@ -323,10 +323,11 @@ class VQAFeatureDataset:
 
 
         return self.trim_collate(features, normalized_bbs, questions,
-                                 bbs, targets, spatial_adj_mats, semantic_adj_mats)
+                                 bbs, spatial_adj_mats, semantic_adj_mats, targets)
 
 
-    def trim_collate(self, features, normalized_bbs, questions, bbs, targets, spatial_adj_mats, semantic_adj_mats):
+    def trim_collate(self, features, normalized_bbs, questions, bbs, 
+                     spatial_adj_mats, semantic_adj_mats, targets):
 
         # [bottom-up-features]
         max_len_feature = max([x.shape[0] for x in features])
@@ -350,8 +351,8 @@ class VQAFeatureDataset:
         stacked_spatial  = np.stack(spatial_adj_mats, axis = 0)
         stacked_semantic = np.stack(semantic_adj_mats, axis = 0)
 
-        return new_features, new_n_bbs, new_questions, new_targets, \
-               new_bbs, stacked_spatial, stacked_semantic
+        return new_features, new_n_bbs, new_questions, \
+               new_bbs, stacked_spatial, stacked_semantic, new_targets
 
     def generator(self):
         np.random.shuffle(self.entries)
@@ -379,7 +380,6 @@ def tfidf_from_questions(names, dictionary, dataroot = './data',
                 inds[1].append(c[0])
 
     if 'vqa' in target:
-        #print("[DEBUG] vqa target: ", target)
         for name in names:
             assert name in ['train', 'val', 'test-dev2015', 'test2015']
             question_path = os.path.join(
@@ -392,7 +392,6 @@ def tfidf_from_questions(names, dictionary, dataroot = './data',
 
     # Visual Genome
     if 'vg' in target:
-        #print("[DEBUG] vg target: ", target)
         question_path = os.path.join(dataroot, 'visualGenome',
                                      'question_answers.json')
         vgq = json.load(open(question_path, 'r'))

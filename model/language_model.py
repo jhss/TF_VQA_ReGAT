@@ -8,7 +8,7 @@ https://sungwookyoo.github.io/tips/CompareTensorflowAndPytorch/#1-tensorflow
 """
 
 class Embedding(tf.keras.layers.Layer):
-    def __init__(self, input_dim, output_dim, padding_idx = 0, **kwargs):
+    def __init__(self, input_dim, output_dim, name, padding_idx = 0, **kwargs):
         super(Embedding, self).__init__(**kwargs)
         self.input_dim   = input_dim
         self.output_dim  = output_dim
@@ -17,6 +17,7 @@ class Embedding(tf.keras.layers.Layer):
         self.embeddings = self.add_weight(
                             shape = (input_dim, output_dim),
                             initializer = 'random_normal',
+                            name = name,
                             dtype = 'float32'
                             )
 
@@ -49,10 +50,10 @@ class WordEmbedding(tf.keras.layers.Layer):
     def __init__(self, n_token, emb_dim, dropout, op=''):
         super(WordEmbedding, self).__init__()
         self.op  = op
-        self.emb = Embedding(n_token+1, emb_dim, padding_idx = n_token)
+        self.emb = Embedding(n_token+1, emb_dim, name = 'emb', padding_idx = n_token)
 
         if 'c' in op:
-            self.emb_ = Embedding(n_token+1, emb_dim, padding_idx = n_token)
+            self.emb_ = Embedding(n_token+1, emb_dim, name = 'emb_', padding_idx = n_token)
             self.emb_.trainable = False
 
         self.dropout = tf.keras.layers.Dropout(dropout)
@@ -163,10 +164,10 @@ class QuestionSelfAttention(tf.keras.layers.Layer):
 
         # [batch, 1, 14]
         attention_weights = tf.reshape(tf.nn.softmax(tf.transpose(logits), axis = 1),
-                                       shape = (-1, 1, seq_len))
+                                       shape = (batch, 1, seq_len))
 
         self_att_question = tf.reshape(tf.matmul(attention_weights, question), 
-                                       shape = (-1, self.hidden_dim))
+                                       shape = (batch, self.hidden_dim))
 
         self_att_question = self.dropout(self_att_question)
 

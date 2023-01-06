@@ -4,15 +4,15 @@ from model.fusion import BUTD
 from model.language_model import WordEmbedding, QuestionEmbedding, QuestionSelfAttention
 from model.relation_encoder import ImplicitRelationEncoder, ExplicitRelationEncoder
 from model.classifier import SimpleClassifier
+from model.position_emb import prepare_graph_variables
 
 class RelationGraphAttentionNetwork(tf.keras.Model):
-    def __init__(self, dataset, w_emb, q_emb, q_att, v_relation,
+    def __init__(self, w_emb, q_emb, q_att, v_relation,
                  joint_emb, classifier, fusion, relation_type):
         super(RelationGraphAttentionNetwork, self).__init__()
         self.network_name  = f"ReGAT_{relation_type}_{fusion}"
         self.relation_type = relation_type
         self.fusion        = fusion
-        self.dataset       = dataset
         self.w_emb         = w_emb
         self.q_emb         = q_emb
         self.q_att         = q_att
@@ -20,9 +20,8 @@ class RelationGraphAttentionNetwork(tf.keras.Model):
         self.joint_emb     = joint_emb
         self.classifier    = classifier
 
-    def call(self, visual, bounding_box, question, implicit_pos_emb, sem_adj_mat,
-             spa_adj_mat):
-
+    def call(self, visual, bounding_box, question, implicit_pos_emb, 
+             sem_adj_mat, spa_adj_mat):
         """
         Inputs:
             visual:            [batch, num_rois, feat_dim]
@@ -64,7 +63,7 @@ class RelationGraphAttentionNetwork(tf.keras.Model):
         else:
             logits = joint_emb
 
-        return logits, weights
+        return logits
 
 def build_relation_graph_attention_net(dataset, args):
     print(f"Building ReGAT model with {args.relation_type} and {args.fusion} fusion method")
@@ -73,7 +72,7 @@ def build_relation_graph_attention_net(dataset, args):
 
     w_emb = WordEmbedding(dataset.dictionary.ntoken, 300, dropout, args.op)
     q_emb = QuestionEmbedding(300 if 'c' not in args.op else 600, 
-                             args.num_hid, 1, False, dropout)
+                              args.num_hid, 1, False, dropout)
     q_att = QuestionSelfAttention(args.num_hid, dropout)
 
     if args.relation_type == 'semantic':
@@ -106,6 +105,21 @@ def build_relation_graph_attention_net(dataset, args):
 
     joint_embedding = BUTD(args.relation_dim, args.num_hid, args.num_hid)
 
-    return RelationGraphAttentionNetwork(dataset, w_emb, q_emb, q_att, v_relation,
-                                         joint_embedding, classifier,
-                                         args.fusion, args.relation_type)
+    model =  RelationGraphAttentionNetwork(w_emb, q_emb, q_att, v_relation,
+                                          joint_embedding, classifier,
+                                          args.fusion, args.relation_type)
+
+    # one forward pass to build model
+    if args.mode == 'eval':
+        inputs = dataset.split_entries(0)
+        visual_feature, norm_bb, question, bb, spa_adj_matrix, sem_adj_matrix, _ = inputs
+        num_objects = visual_feature.shape[1]
+
+        pos_emb, sem_adj_mat, spa_adj_mat = prepare_graph_variables(
+                    dataset.relation_type, bb, sem_adj_matrix, spa_adj_matrix, 
+                    num_objects, args.nongt_dim, args.imp_pos_emb_dim, 
+                    args.spa_label_num, args.sem_label_num)
+
+        model(visual_feature, norm_bb, question, pos_emb, sem_adj_mat, spa_adj_mat)
+
+    return model

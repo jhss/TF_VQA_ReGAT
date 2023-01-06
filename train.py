@@ -88,8 +88,8 @@ def train(model, train_loader, eval_loader, args):
         logger.write("--"*50)
 
         # Start iterations
-        for i, (visual_feature, norm_bb, question, target, bb,
-                spa_adj_matrix, sem_adj_matrix) in enumerate(train_loader.generator()):
+        for i, (visual_feature, norm_bb, question, bb, spa_adj_matrix, 
+                sem_adj_matrix, target) in enumerate(train_loader.generator()):
 
             batch_size, num_objects = visual_feature.shape[0], visual_feature.shape[1]
 
@@ -101,10 +101,8 @@ def train(model, train_loader, eval_loader, args):
 
             # Forward data and calculate loss value
             with tf.GradientTape() as g:
-                pred, att = model(visual_feature,
-                                  norm_bb, question, pos_emb,
-                                  sem_adj_mat,
-                                  spa_adj_mat)
+                pred = model(visual_feature, norm_bb, question, pos_emb,
+                             sem_adj_mat, spa_adj_mat)
 
                 loss = instance_bce_with_logits(pred, target)
                 loss_avg = tf.reduce_mean(loss) * tf.cast(tf.shape(target)[1], tf.float32)
@@ -150,8 +148,8 @@ def evaluate(model, eval_loader, epoch, args, logger):
     start = end = time.time()
 
     # Start evaluation
-    for i, (visual_feature, norm_bb, question, target, bb,
-            spa_adj_matrix, sem_adj_matrix) in enumerate(eval_loader.generator()):
+    for i, (visual_feature, norm_bb, question, bb,
+            spa_adj_matrix, sem_adj_matrix, target) in enumerate(eval_loader.generator()):
 
         batch_size, num_objects = visual_feature.shape[0], visual_feature.shape[1]
 
@@ -160,10 +158,8 @@ def evaluate(model, eval_loader, epoch, args, logger):
             args.nongt_dim, args.imp_pos_emb_dim, args.spa_label_num,
             args.sem_label_num)
 
-        pred, att = model(visual_feature,
-                          norm_bb, question, pos_emb,
-                          sem_adj_mat,
-                          spa_adj_mat)
+        pred = model(visual_feature, norm_bb, question, pos_emb,
+                     sem_adj_mat, spa_adj_mat)
 
         loss = instance_bce_with_logits(pred, target)
         loss_avg = tf.reduce_mean(loss) * tf.cast(tf.shape(target)[1], tf.float32)
